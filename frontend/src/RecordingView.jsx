@@ -2,11 +2,20 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, fmtSize, fmtTime, STATUS_LABELS } from './api.js'
 
 const SAVE_DELAY = 700
+const SPEAKER_COUNTS = [2, 3, 4]
+const NAME_PLACEHOLDERS = ['דני', 'מיכל', 'יוסי', 'רונית']
+const colorClass = (n) => `c${((Math.max(1, n || 1) - 1) % 4) + 1}`
 
 export default function RecordingView({ summary, allRecordings, onChanged, onError }) {
   const id = summary.id
   const [detail, setDetail] = useState(null)
-  const [names, setNames] = useState({ name1: summary.name1 || '', name2: summary.name2 || '' })
+  const [names, setNames] = useState({
+    name1: summary.name1 || '',
+    name2: summary.name2 || '',
+    name3: summary.name3 || '',
+    name4: summary.name4 || '',
+    num_speakers: summary.num_speakers || 2,
+  })
   const [saveState, setSaveState] = useState('idle') // idle | saving | saved | error
   const pendingSaves = useRef(0)
 
@@ -111,6 +120,7 @@ export default function RecordingView({ summary, allRecordings, onChanged, onErr
       <NamesCard
         names={names}
         onChange={changeName}
+        detectedCount={status === 'done' ? detail?.speakers?.length : null}
         canApplyToOthers={allRecordings.some((r) => r.id !== id && r.status !== 'done')}
         onApplyToOthers={applyNamesToPending}
       />
@@ -140,23 +150,40 @@ function SaveIndicator({ state }) {
   return <span className={`save-ind ${state}`}>{text}</span>
 }
 
-function NamesCard({ names, onChange, canApplyToOthers, onApplyToOthers }) {
+function NamesCard({ names, onChange, detectedCount, canApplyToOthers, onApplyToOthers }) {
+  const count = names.num_speakers
+  const slots = Array.from({ length: count }, (_, i) => i + 1)
   return (
     <section className="card">
-      <div className="card-title">שמות הדוברים</div>
-      <div className="names-row">
-        <label className="field">
-          <span><i className="dot c1" /> דובר/ת 1</span>
-          <input value={names.name1} placeholder="לדוגמה: דני" onChange={(e) => onChange('name1', e.target.value)} />
-        </label>
-        <label className="field">
-          <span><i className="dot c2" /> דובר/ת 2</span>
-          <input value={names.name2} placeholder="לדוגמה: מיכל" onChange={(e) => onChange('name2', e.target.value)} />
+      <div className="card-title row between">
+        <span>שמות הדוברים</span>
+        <label className="count-pick">
+          מספר דוברים בשיחה:
+          <select value={count} onChange={(e) => onChange('num_speakers', Number(e.target.value))}>
+            {SPEAKER_COUNTS.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
         </label>
       </div>
-      {canApplyToOthers && (names.name1 || names.name2) && (
+      <div className="names-row">
+        {slots.map((slot) => (
+          <label key={slot} className="field">
+            <span><i className={`dot ${colorClass(slot)}`} /> דובר/ת {slot}</span>
+            <input
+              value={names[`name${slot}`]}
+              placeholder={`לדוגמה: ${NAME_PLACEHOLDERS[slot - 1]}`}
+              onChange={(e) => onChange(`name${slot}`, e.target.value)}
+            />
+          </label>
+        ))}
+      </div>
+      {detectedCount != null && detectedCount !== count && (
+        <p className="muted small">
+          ההקלטה תומללה עם {detectedCount} דוברים. כדי לזהות {count} דוברים לחצו "תמלול מחדש".
+        </p>
+      )}
+      {canApplyToOthers && slots.some((s) => names[`name${s}`]) && (
         <button className="link-btn" onClick={onApplyToOthers}>
-          החל שמות אלה על כל ההקלטות שטרם תומללו
+          החל את מספר הדוברים והשמות על כל ההקלטות שטרם תומללו
         </button>
       )}
     </section>
@@ -177,13 +204,17 @@ function useElapsed(startIso, active) {
 function StatusCard({ summary, onTranscribe, names }) {
   const { status } = summary
   const elapsed = useElapsed(summary.started_at, status === 'transcribing')
-  const missingNames = !names.name1.trim() || !names.name2.trim()
+  const missingNames = Array.from({ length: names.num_speakers }, (_, i) => names[`name${i + 1}`])
+    .some((n) => !n.trim())
 
   if (status === 'uploaded') {
     return (
       <section className="card status-card">
         <p>הקובץ הועלה ומוכן לתמלול. ההקלטה כולה תישלח ל-ElevenLabs כקובץ אחד.</p>
-        {missingNames && <p className="muted small">מומלץ להזין את שמות שני הדוברים לפני התמלול (ניתן גם אחר כך).</p>}
+        <p className="muted small">
+          ElevenLabs יזהה {names.num_speakers} קולות שונים. ודאו שמספר הדוברים שנבחר למעלה נכון לפני התמלול.
+        </p>
+        {missingNames && <p className="muted small">מומלץ להזין את שמות כל הדוברים לפני התמלול (ניתן גם אחר כך).</p>}
         <button className="btn primary big" onClick={onTranscribe}>תמלל</button>
       </section>
     )
@@ -237,14 +268,16 @@ function Editor({ rec, detail, setDetail, names, track, onChanged }) {
   const labelOf = useMemo(() => Object.fromEntries(speakers.map((s) => [s.speaker_id, s.label_index])), [speakers])
 
   const nameForSlot = useCallback(
-    (slot) => (slot === 1 ? names.name1 : names.name2).trim() || `דובר ${slot}`,
+    (slot) => (names[`name${slot}`] || '').trim() || `דובר ${slot}`,
     [names],
   )
+  // Name choices offered for each voice: the expected speakers, plus any slot already in use.
+  const numSlots = Math.max(names.num_speakers, ...speakers.map((s) => s.slot))
   // Before the user confirms the voice→name mapping, show the neutral detected labels.
   const display = useCallback(
     (speakerId) => {
-      if (!confirmed) return { text: `דובר ${labelOf[speakerId] ?? '?'}`, color: labelOf[speakerId] === 1 ? 1 : 2 }
-      const slot = slotOf[speakerId] ?? 2
+      if (!confirmed) return { text: `דובר ${labelOf[speakerId] ?? '?'}`, color: labelOf[speakerId] ?? 1 }
+      const slot = slotOf[speakerId] ?? 1
       return { text: nameForSlot(slot), color: slot }
     },
     [confirmed, labelOf, slotOf, nameForSlot],
@@ -373,6 +406,7 @@ function Editor({ rec, detail, setDetail, names, track, onChanged }) {
         segments={segments}
         confirmed={confirmed}
         nameForSlot={nameForSlot}
+        numSlots={numSlots}
         onSave={saveMapping}
         onPlaySample={(seg) => seek(seg.start, { play: true, stopAt: Math.min(seg.end + 0.3, seg.start + 15) })}
       />
@@ -428,7 +462,7 @@ function Editor({ rec, detail, setDetail, names, track, onChanged }) {
   )
 }
 
-function SpeakerCard({ speakers, segments, confirmed, nameForSlot, onSave, onPlaySample }) {
+function SpeakerCard({ speakers, segments, confirmed, nameForSlot, numSlots, onSave, onPlaySample }) {
   const samples = useMemo(() => {
     const out = {}
     for (const sp of speakers) {
@@ -442,11 +476,10 @@ function SpeakerCard({ speakers, segments, confirmed, nameForSlot, onSave, onPla
   const mapping = Object.fromEntries(speakers.map((s) => [s.speaker_id, s.slot]))
 
   function setSlot(speakerId, slot) {
+    // Give the chosen name to this voice; the voice that had it takes this voice's old name.
     const m = { ...mapping, [speakerId]: slot }
-    if (speakers.length === 2) {
-      const other = speakers.find((s) => s.speaker_id !== speakerId)
-      m[other.speaker_id] = slot === 1 ? 2 : 1
-    }
+    const holder = speakers.find((s) => s.speaker_id !== speakerId && mapping[s.speaker_id] === slot)
+    if (holder) m[holder.speaker_id] = mapping[speakerId]
     onSave(m, confirmed ? true : undefined)
   }
 
@@ -470,7 +503,7 @@ function SpeakerCard({ speakers, segments, confirmed, nameForSlot, onSave, onPla
           return (
             <div key={sp.speaker_id} className="speaker-box">
               <div className="row between">
-                <b><i className={`dot c${sp.label_index === 1 ? 1 : 2}`} /> דובר {sp.label_index}</b>
+                <b><i className={`dot ${colorClass(sp.label_index)}`} /> דובר {sp.label_index}</b>
                 <span className="muted small">{s.count} משפטים</span>
               </div>
               {s.seg ? (
@@ -484,10 +517,10 @@ function SpeakerCard({ speakers, segments, confirmed, nameForSlot, onSave, onPla
               <div className="assign">
                 <span>זהו/זוהי:</span>
                 <div className="seg-toggle">
-                  {[1, 2].map((slot) => (
+                  {Array.from({ length: numSlots }, (_, i) => i + 1).map((slot) => (
                     <button
                       key={slot}
-                      className={`${sp.slot === slot ? `on c${slot}` : ''}`}
+                      className={`${sp.slot === slot ? `on ${colorClass(slot)}` : ''}`}
                       onClick={() => setSlot(sp.speaker_id, slot)}
                     >
                       {nameForSlot(slot)}
@@ -502,7 +535,7 @@ function SpeakerCard({ speakers, segments, confirmed, nameForSlot, onSave, onPla
       <div className="row gap">
         {speakers.length === 2 && <button className="btn ghost small" onClick={swap}>⇄ החלף בין הדוברים</button>}
         {!confirmed && <button className="btn primary" onClick={() => onSave(mapping, true)}>אישור שיוך</button>}
-        {confirmed && <button className="link-btn" onClick={() => onSave(mapping, false)}>הצג שוב כ"דובר 1 / דובר 2"</button>}
+        {confirmed && <button className="link-btn" onClick={() => onSave(mapping, false)}>הצג שוב כ"דובר 1, דובר 2…"</button>}
       </div>
     </section>
   )
@@ -528,7 +561,7 @@ const SegmentRow = memo(function SegmentRow({ idx, seg, active, speakers, displa
         [{fmtTime(seg.start)}]
       </button>
       <select
-        className={`spk c${d.color}`}
+        className={`spk ${colorClass(d.color)}`}
         value={seg.speaker_id}
         onClick={(e) => e.stopPropagation()}
         onChange={(e) => onSpeaker(seg.id, e.target.value)}

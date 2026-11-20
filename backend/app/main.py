@@ -14,7 +14,15 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import db, exporters, transcriber
-from .config import ALLOWED_EXTENSIONS, FRONTEND_DIST, RECORDINGS_DIR, RESPONSES_DIR, get_api_key
+from .config import (
+    ALLOWED_EXTENSIONS,
+    FRONTEND_DIST,
+    MAX_SPEAKERS,
+    MIN_SPEAKERS,
+    RECORDINGS_DIR,
+    RESPONSES_DIR,
+    get_api_key,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -112,12 +120,17 @@ def get_recording(rec_id: int):
 class RecordingPatch(BaseModel):
     name1: str | None = None
     name2: str | None = None
+    name3: str | None = None
+    name4: str | None = None
+    num_speakers: int | None = None
 
 
 @app.patch("/api/recordings/{rec_id}")
 def patch_recording(rec_id: int, body: RecordingPatch):
     _get_rec(rec_id)
-    fields = {k: v.strip() for k, v in body.model_dump(exclude_none=True).items()}
+    fields = {k: v.strip() if isinstance(v, str) else v for k, v in body.model_dump(exclude_none=True).items()}
+    if "num_speakers" in fields and not MIN_SPEAKERS <= fields["num_speakers"] <= MAX_SPEAKERS:
+        raise HTTPException(400, f"מספר הדוברים חייב להיות בין {MIN_SPEAKERS} ל-{MAX_SPEAKERS}")
     if fields:
         fields["updated_at"] = db.now_iso()
         sets = ", ".join(f"{k} = ?" for k in fields)
@@ -185,7 +198,7 @@ def set_speakers(rec_id: int, body: SpeakerMapping):
     known = {s["speaker_id"] for s in _speakers(rec_id)}
     with db.tx() as c:
         for sp, slot in body.mapping.items():
-            if sp not in known or slot not in (1, 2):
+            if sp not in known or not 1 <= slot <= MAX_SPEAKERS:
                 raise HTTPException(400, "מיפוי דוברים לא תקין")
             c.execute("UPDATE speakers SET slot = ? WHERE recording_id = ? AND speaker_id = ?", (slot, rec_id, sp))
         if body.confirmed is not None:

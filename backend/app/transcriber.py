@@ -11,6 +11,8 @@ from elevenlabs.core.api_error import ApiError
 from . import db
 from .config import (
     MAX_CONCURRENT_TRANSCRIPTIONS,
+    MAX_SPEAKERS,
+    MIN_SPEAKERS,
     RECORDINGS_DIR,
     REQUEST_TIMEOUT_SECONDS,
     RESPONSES_DIR,
@@ -59,7 +61,7 @@ def _describe_api_error(e: ApiError) -> str:
     return f"{head} {detail}" if detail else head
 
 
-async def _call_elevenlabs(audio_path: Path, filename: str) -> dict:
+async def _call_elevenlabs(audio_path: Path, filename: str, num_speakers: int) -> dict:
     api_key = get_api_key()
     if not api_key:
         raise TranscriptionError("לא הוגדר מפתח API. הוסיפו ELEVENLABS_API_KEY לקובץ ‎.env והפעילו מחדש.")
@@ -70,6 +72,7 @@ async def _call_elevenlabs(audio_path: Path, filename: str) -> dict:
         raw = await client.speech_to_text.with_raw_response.convert(
             file=(filename, f),
             **TRANSCRIPTION_SETTINGS,
+            num_speakers=num_speakers,
             request_options={"timeout_in_seconds": REQUEST_TIMEOUT_SECONDS, "max_retries": 2},
         )
     # Keep the complete, unmodified API response body.
@@ -82,18 +85,28 @@ async def _call_elevenlabs(audio_path: Path, filename: str) -> dict:
     return raw.data.model_dump(mode="json")
 
 
-def save_transcription(rec_id: int, response: dict) -> None:
+def clamp_speakers(n) -> int:
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        n = MIN_SPEAKERS
+    return max(MIN_SPEAKERS, min(MAX_SPEAKERS, n))
+
+
+def save_transcription(rec_id: int, response: dict, num_speakers: int = MIN_SPEAKERS) -> None:
     """Persist the raw response and derived segments/speakers for a recording."""
     response_file = f"{rec_id}.json"
     (RESPONSES_DIR / response_file).write_text(json.dumps(response, ensure_ascii=False, indent=2), encoding="utf-8")
 
     segments, speaker_order = build_segments(response)
-    # Always offer two speakers, even if diarization found only one.
-    for fallback in ("speaker_0", "speaker_1"):
-        if len(speaker_order) >= 2:
-            break
+    # Always offer as many speakers as expected, even if diarization found fewer.
+    num_speakers = clamp_speakers(num_speakers)
+    i = 0
+    while len(speaker_order) < num_speakers:
+        fallback = f"speaker_{i}"
         if fallback not in speaker_order:
             speaker_order.append(fallback)
+        i += 1
 
     duration = response.get("audio_duration_secs")
     if duration is None and segments:
@@ -103,7 +116,8 @@ def save_transcription(rec_id: int, response: dict) -> None:
         c.execute("DELETE FROM segments WHERE recording_id = ?", (rec_id,))
         c.execute("DELETE FROM speakers WHERE recording_id = ?", (rec_id,))
         for i, sp in enumerate(speaker_order, start=1):
-            slot = 1 if i == 1 else 2 if i == 2 else ((i - 1) % 2) + 1
+            # Voices in order of first appearance get names 1..N; any extra voices wrap around.
+            slot = ((i - 1) % num_speakers) + 1
             c.execute(
                 "INSERT INTO speakers (recording_id, speaker_id, label_index, slot) VALUES (?, ?, ?, ?)",
                 (rec_id, sp, i, slot),
@@ -133,10 +147,11 @@ async def _process(rec_id: int) -> None:
     _set_status(rec_id, "transcribing", started_at=db.now_iso(), finished_at=None, error=None)
     log.info("Transcribing recording %s (%s)", rec_id, rec["filename"])
     try:
-        response = await _call_elevenlabs(RECORDINGS_DIR / rec["stored_name"], rec["filename"])
+        num_speakers = clamp_speakers(rec.get("num_speakers"))
+        response = await _call_elevenlabs(RECORDINGS_DIR / rec["stored_name"], rec["filename"], num_speakers)
         if "words" not in response:
             raise TranscriptionError("התקבלה תשובה לא צפויה מ-ElevenLabs (חסר שדה words).")
-        await asyncio.to_thread(save_transcription, rec_id, response)
+        await asyncio.to_thread(save_transcription, rec_id, response, num_speakers)
         log.info("Recording %s done", rec_id)
     except ApiError as e:
         log.warning("ElevenLabs API error for %s: %s", rec_id, e)

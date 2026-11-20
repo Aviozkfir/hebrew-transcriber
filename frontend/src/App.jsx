@@ -85,7 +85,7 @@ export default function App() {
           <span className="logo">📞</span>
           <div>
             <h1>תמלול שיחות טלפון</h1>
-            <div className="sub">תמלול מדויק בעברית · שני דוברים · ElevenLabs Scribe v3</div>
+            <div className="sub">תמלול מדויק בעברית · 2–4 דוברים · ElevenLabs Scribe v3</div>
           </div>
         </div>
         {health && !health.api_key_configured && (
@@ -134,7 +134,7 @@ function EmptyState() {
       <h2>ברוכים הבאים</h2>
       <ol className="steps">
         <li>העלו הקלטה אחת או יותר (MP3, M4A, WAV)</li>
-        <li>הקלידו את שמות שני הדוברים</li>
+        <li>בחרו את מספר הדוברים בשיחה (2–4) והקלידו את שמותיהם</li>
         <li>לחצו "תמלל"</li>
         <li>בדקו איזה קול שייך לכל שם ואשרו</li>
         <li>תקנו את הטקסט במידת הצורך — כל שינוי נשמר אוטומטית</li>

@@ -25,8 +25,12 @@ def fmt_srt_ts(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
+def _slot_names(rec: dict) -> dict[int, str]:
+    return {i: (rec.get(f"name{i}") or "").strip() for i in range(1, 5)}
+
+
 def speaker_name_map(rec: dict, speakers: list[dict]) -> dict[str, str]:
-    names = {1: (rec.get("name1") or "").strip(), 2: (rec.get("name2") or "").strip()}
+    names = _slot_names(rec)
     out = {}
     for sp in speakers:
         out[sp["speaker_id"]] = names.get(sp["slot"]) or f"דובר {sp['slot']}"
@@ -45,8 +49,12 @@ def _title(rec) -> str:
 
 
 def _participants(rec) -> str:
-    n = [x for x in ((rec.get("name1") or "").strip(), (rec.get("name2") or "").strip()) if x]
-    return " ו".join(n) if len(n) == 2 else (n[0] if n else "")
+    count = rec.get("num_speakers") or 2
+    names = _slot_names(rec)
+    n = [names[i] for i in range(1, count + 1) if names.get(i)]
+    if len(n) < 2:
+        return n[0] if n else ""
+    return ", ".join(n[:-1]) + " ו" + n[-1]  # "דני, רונית ויוסי"
 
 
 # ---------- TXT ----------

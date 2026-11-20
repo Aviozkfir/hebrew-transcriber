@@ -20,11 +20,14 @@ TRANSCRIPTION_SETTINGS = {
     "model_id": "scribe_v3",
     "language_code": "he",
     "diarize": True,
-    "num_speakers": 2,
+    # num_speakers is set per recording (MIN_SPEAKERS..MAX_SPEAKERS), see transcriber.py.
     "timestamps_granularity": "word",
     "no_verbatim": False,
     "tag_audio_events": False,
 }
+
+MIN_SPEAKERS = 2
+MAX_SPEAKERS = 4
 
 # How many recordings are sent to ElevenLabs at the same time.
 MAX_CONCURRENT_TRANSCRIPTIONS = 2

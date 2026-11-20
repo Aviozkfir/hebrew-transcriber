@@ -1,6 +1,6 @@
 # Hebrew Telephone Transcription
 
-A local Windows application that transcribes Hebrew phone conversations between two people with **ElevenLabs Scribe v3**, then lets you assign real names to the voices, review and correct the transcript next to the audio, and export it.
+A local Windows application that transcribes Hebrew phone conversations between two to four people with **ElevenLabs Scribe v3**, then lets you assign real names to the voices, review and correct the transcript next to the audio, and export it.
 
 - **Backend:** Python + FastAPI (`backend/`)
 - **Frontend:** React + Vite (`frontend/`, prebuilt into `frontend/dist`)
@@ -38,9 +38,9 @@ On the first run it installs Python if needed, creates a virtual environment (`.
 ## Workflow
 
 1. **Upload** one or more recordings (MP3, M4A, WAV). Drag them in or click the upload box.
-2. **Enter the two speaker names.** Names are saved per recording. If you upload several calls between the same two people, click *"החל שמות אלה על כל ההקלטות שטרם תומללו"* to copy the names to them.
+2. **Choose the number of speakers and enter their names.** Pick how many people are in the call (2, 3 or 4) under *מספר דוברים בשיחה*, then type a name for each. This number is sent to ElevenLabs, so set it before transcribing. Names and the count are saved per recording. If you upload several calls with the same people, click *"החל את מספר הדוברים והשמות על כל ההקלטות שטרם תומללו"* to copy them to the other recordings.
 3. Click **תמלל** (Transcribe), or **"תמלל את כל הממתינות"** to transcribe every pending recording. Each recording is sent to ElevenLabs as one whole file, with no chunking. The interface stays usable while transcription runs in the background, and the status and elapsed time are shown.
-4. **Confirm the speakers.** The transcript first shows the detected voices as *דובר 1* and *דובר 2*. Play the short sample for each voice, choose which name it belongs to (or click *⇄ החלף*), then click **אישור שיוך**. The names then appear throughout the transcript.
+4. **Confirm the speakers.** The transcript first shows the detected voices as *דובר 1*, *דובר 2* and so on. Play the short sample for each voice and choose which name it belongs to. Choosing a name that another voice already has swaps the two. With two speakers you can also click *⇄ החלף*. Then click **אישור שיוך**. ElevenLabs can occasionally confuse two similar voices (for example two men on a phone line); fix any wrong sentence with the speaker chip next to it. The names then appear throughout the transcript.
 5. **Correct** the transcript if needed:
    - Click a sentence or its timestamp to jump the player there. The sentence that is playing is highlighted.
    - Edit text directly in place.
@@ -57,7 +57,7 @@ These are fixed in `backend/app/config.py` and passed directly to `client.speech
 | `model_id` | `"scribe_v3"` |
 | `language_code` | `"he"` |
 | `diarize` | `True` |
-| `num_speakers` | `2` |
+| `num_speakers` | chosen per recording: `2`, `3` or `4` (default `2`) |
 | `timestamps_granularity` | `"word"` |
 | `no_verbatim` | `False` (keeps fillers, repetitions, false starts) |
 | `tag_audio_events` | `False` (no laughter or noise labels) |

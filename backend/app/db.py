@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS recordings (
     size_bytes      INTEGER NOT NULL DEFAULT 0,
     name1           TEXT NOT NULL DEFAULT '',
     name2           TEXT NOT NULL DEFAULT '',
+    name3           TEXT NOT NULL DEFAULT '',
+    name4           TEXT NOT NULL DEFAULT '',
+    num_speakers    INTEGER NOT NULL DEFAULT 2,       -- expected number of people in the call (2-4)
     status          TEXT NOT NULL DEFAULT 'uploaded',  -- uploaded|queued|transcribing|done|error
     error           TEXT,
     started_at      TEXT,
@@ -33,7 +36,7 @@ CREATE TABLE IF NOT EXISTS speakers (
     recording_id    INTEGER NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
     speaker_id      TEXT NOT NULL,      -- as returned by ElevenLabs, e.g. speaker_0
     label_index     INTEGER NOT NULL,   -- 1-based order of first appearance ("Speaker 1")
-    slot            INTEGER NOT NULL,   -- 1 => name1, 2 => name2
+    slot            INTEGER NOT NULL,   -- 1 => name1, 2 => name2, 3 => name3, 4 => name4
     PRIMARY KEY (recording_id, speaker_id)
 );
 
@@ -81,9 +84,24 @@ def tx():
             raise
 
 
+# Columns added after the first release; added to existing databases on startup.
+MIGRATIONS = {
+    "recordings": {
+        "name3": "TEXT NOT NULL DEFAULT ''",
+        "name4": "TEXT NOT NULL DEFAULT ''",
+        "num_speakers": "INTEGER NOT NULL DEFAULT 2",
+    },
+}
+
+
 def init_db() -> None:
     with tx() as c:
         c.executescript(SCHEMA)
+        for table, cols in MIGRATIONS.items():
+            existing = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+            for col, decl in cols.items():
+                if col not in existing:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
 def query(sql: str, params=()) -> list[dict]:

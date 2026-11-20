@@ -10,6 +10,10 @@
   --c1-bg: #e8f0fd;
   --c2: #c2561b;
   --c2-bg: #fdefe6;
+  --c3: #1f8a4c;
+  --c3-bg: #e6f5ec;
+  --c4: #7b3fc4;
+  --c4-bg: #f1e9fb;
   --ok: #1f8a4c;
   --warn: #b7791f;
   --err: #c53030;
@@ -130,6 +134,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; margin-left: 4px; }
 .dot.c1 { background: var(--c1); }
 .dot.c2 { background: var(--c2); }
+.dot.c3 { background: var(--c3); }
+.dot.c4 { background: var(--c4); }
 
 .status-card { text-align: center; }
 .status-card .row { justify-content: center; }
@@ -168,6 +174,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .seg-toggle button + button { border-right: 1px solid #cfd5df; }
 .seg-toggle button.on.c1 { background: var(--c1); color: #fff; }
 .seg-toggle button.on.c2 { background: var(--c2); color: #fff; }
+.seg-toggle button.on.c3 { background: var(--c3); color: #fff; }
+.seg-toggle button.on.c4 { background: var(--c4); color: #fff; }
 
 /* ---------- player */
 .player-bar {
@@ -203,6 +211,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .spk.c1 { background: var(--c1-bg); color: var(--c1); }
 .spk.c2 { background: var(--c2-bg); color: var(--c2); }
+.spk.c3 { background: var(--c3-bg); color: var(--c3); }
+.spk.c4 { background: var(--c4-bg); color: var(--c4); }
 .spk option { background: #fff; color: var(--text); }
 .seg textarea {
   width: 100%; border: 1px solid transparent; background: transparent; resize: none; overflow: hidden;
@@ -226,3 +236,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .sidebar { width: 100%; border-left: none; border-bottom: 1px solid var(--border); max-height: 40vh; }
   .main { padding: 14px; }
 }
+
+.count-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.count-pick select { padding: 4px 8px; border: 1px solid #cfd5df; border-radius: 6px; font: inherit; }
+.assign { flex-wrap: wrap; }

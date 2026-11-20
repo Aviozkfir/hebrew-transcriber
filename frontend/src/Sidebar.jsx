@@ -71,9 +71,10 @@ export default function Sidebar({ recordings, selectedId, onSelect, onUpload, up
                 {r.duration_secs ? fmtTime(r.duration_secs) : fmtSize(r.size_bytes)}
               </span>
             </div>
-            {(r.name1 || r.name2) && (
-              <div className="rec-names muted">{[r.name1, r.name2].filter(Boolean).join(' · ')}</div>
-            )}
+            {(() => {
+              const shown = [r.name1, r.name2, r.name3, r.name4].slice(0, r.num_speakers || 2).filter(Boolean)
+              return shown.length > 0 && <div className="rec-names muted">{shown.join(' · ')}</div>
+            })()}
           </button>
         ))}
       </div>
