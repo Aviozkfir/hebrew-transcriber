@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/
+frontend/node_modules/
+
+# The built interface is committed so the app runs without Node.js.
+!frontend/dist
+!frontend/dist/**
