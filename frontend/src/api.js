@@ -22,6 +22,7 @@ export const api = {
   patch: (id, body) => request('PATCH', `/api/recordings/${id}`, body),
   remove: (id) => request('DELETE', `/api/recordings/${id}`),
   transcribe: (id, force = false) => request('POST', `/api/recordings/${id}/transcribe${force ? '?force=true' : ''}`),
+  autoAssign: (id) => request('POST', `/api/recordings/${id}/auto-assign`),
   setSpeakers: (id, mapping, confirmed) => request('PUT', `/api/recordings/${id}/speakers`, { mapping, confirmed }),
   patchSegment: (id, body) => request('PATCH', `/api/segments/${id}`, body),
   revertSegment: (id) => request('POST', `/api/segments/${id}/revert`),

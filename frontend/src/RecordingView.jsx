@@ -3,7 +3,9 @@ import { api, fmtSize, fmtTime, STATUS_LABELS } from './api.js'
 
 const SAVE_DELAY = 700
 const SPEAKER_COUNTS = [2, 3, 4]
-const NAME_PLACEHOLDERS = ['דני', 'מיכל', 'יוסי', 'רונית']
+const NAME_PLACEHOLDERS = ['דני', 'יוסי', 'אבי', 'משה']
+const FEMALE_PLACEHOLDER = 'מיכל'
+const ORDINALS = ['ראשון/ה', 'שני/ה', 'שלישי/ת', 'רביעי/ת']
 const colorClass = (n) => `c${((Math.max(1, n || 1) - 1) % 4) + 1}`
 
 export default function RecordingView({ summary, allRecordings, onChanged, onError }) {
@@ -15,6 +17,7 @@ export default function RecordingView({ summary, allRecordings, onChanged, onErr
     name3: summary.name3 || '',
     name4: summary.name4 || '',
     num_speakers: summary.num_speakers || 2,
+    female_slot: summary.female_slot || 0,
   })
   const [saveState, setSaveState] = useState('idle') // idle | saving | saved | error
   const pendingSaves = useRef(0)
@@ -153,6 +156,10 @@ function SaveIndicator({ state }) {
 function NamesCard({ names, onChange, detectedCount, canApplyToOthers, onApplyToOthers }) {
   const count = names.num_speakers
   const slots = Array.from({ length: count }, (_, i) => i + 1)
+  const female = slots.includes(names.female_slot) ? names.female_slot : 0
+  // Everyone except the woman is matched by speaking order: label them 1st, 2nd, ...
+  const ordinalOf = {}
+  slots.filter((s) => s !== female).forEach((s, i) => { ordinalOf[s] = ORDINALS[i] })
   return (
     <section className="card">
       <div className="card-title row between">
@@ -164,16 +171,32 @@ function NamesCard({ names, onChange, detectedCount, canApplyToOthers, onApplyTo
           </select>
         </label>
       </div>
+      <p className="muted small">
+        הזינו את השמות לפי סדר הדיבור בשיחה: מי שמדבר/ת ראשון/ה, שני/ה וכן הלאה.
+        {' '}אם אחת המשתתפות היא אישה, סמנו "אישה" ליד שמה: הקול הגבוה ביותר בשיחה יקבל את שמה, והשאר לפי סדר הדיבור.
+      </p>
       <div className="names-row">
         {slots.map((slot) => (
-          <label key={slot} className="field">
-            <span><i className={`dot ${colorClass(slot)}`} /> דובר/ת {slot}</span>
+          <div key={slot} className="field">
+            <label htmlFor={`name-${slot}`}>
+              <i className={`dot ${colorClass(slot)}`} />{' '}
+              {slot === female ? '♀ אישה (מזוהה לפי גובה הקול)' : `מדבר/ת ${ordinalOf[slot]}`}
+            </label>
             <input
+              id={`name-${slot}`}
               value={names[`name${slot}`]}
-              placeholder={`לדוגמה: ${NAME_PLACEHOLDERS[slot - 1]}`}
+              placeholder={`לדוגמה: ${slot === female ? FEMALE_PLACEHOLDER : NAME_PLACEHOLDERS[slot - 1]}`}
               onChange={(e) => onChange(`name${slot}`, e.target.value)}
             />
-          </label>
+            <label className="check small">
+              <input
+                type="checkbox"
+                checked={slot === female}
+                onChange={(e) => onChange('female_slot', e.target.checked ? slot : 0)}
+              />
+              אישה
+            </label>
+          </div>
         ))}
       </div>
       {detectedCount != null && detectedCount !== count && (
@@ -271,6 +294,7 @@ function Editor({ rec, detail, setDetail, names, track, onChanged }) {
     (slot) => (names[`name${slot}`] || '').trim() || `דובר ${slot}`,
     [names],
   )
+  const femaleSlot = names.female_slot > 0 && names.female_slot <= names.num_speakers ? names.female_slot : 0
   // Name choices offered for each voice: the expected speakers, plus any slot already in use.
   const numSlots = Math.max(names.num_speakers, ...speakers.map((s) => s.slot))
   // Before the user confirms the voice→name mapping, show the neutral detected labels.
@@ -389,6 +413,15 @@ function Editor({ rec, detail, setDetail, names, track, onChanged }) {
   }, [track, updateLocal])
 
   // ---------- speaker mapping
+  async function autoAssign() {
+    try {
+      await track(api.patch(rec.id, names)) // make sure the latest names/order/woman are saved first
+      const r = await track(api.autoAssign(rec.id))
+      setDetail((d) => ({ ...d, speakers: r.speakers, recording: { ...d.recording, ...r.recording } }))
+      onChanged()
+    } catch { /* reported */ }
+  }
+
   async function saveMapping(mapping, confirm) {
     try {
       const r = await track(api.setSpeakers(rec.id, mapping, confirm))
@@ -407,6 +440,8 @@ function Editor({ rec, detail, setDetail, names, track, onChanged }) {
         confirmed={confirmed}
         nameForSlot={nameForSlot}
         numSlots={numSlots}
+        femaleSlot={femaleSlot}
+        onAutoAssign={autoAssign}
         onSave={saveMapping}
         onPlaySample={(seg) => seek(seg.start, { play: true, stopAt: Math.min(seg.end + 0.3, seg.start + 15) })}
       />
@@ -462,7 +497,9 @@ function Editor({ rec, detail, setDetail, names, track, onChanged }) {
   )
 }
 
-function SpeakerCard({ speakers, segments, confirmed, nameForSlot, numSlots, onSave, onPlaySample }) {
+function SpeakerCard({ speakers, segments, confirmed, nameForSlot, numSlots, femaleSlot, onAutoAssign, onSave, onPlaySample }) {
+  const pitched = speakers.filter((s) => s.pitch_hz)
+  const highest = pitched.length >= 2 ? pitched.reduce((a, b) => (b.pitch_hz > a.pitch_hz ? b : a)).speaker_id : null
   const samples = useMemo(() => {
     const out = {}
     for (const sp of speakers) {
@@ -495,7 +532,10 @@ function SpeakerCard({ speakers, segments, confirmed, nameForSlot, numSlots, onS
         {confirmed ? <span className="badge ok">✓ השיוך אושר</span> : <span className="badge warn">נדרש אישור</span>}
       </div>
       {!confirmed && (
-        <p className="small">האזינו לדוגמה מכל קול ובחרו לאיזה שם הוא שייך, ואז לחצו "אישור שיוך".</p>
+        <p className="small">
+          השמות שויכו אוטומטית לפי סדר הדיבור{femaleSlot && highest ? ', והקול הגבוה ביותר שויך לאישה' : ''}.
+          האזינו לדוגמה מכל קול, תקנו אם צריך, ולחצו "אישור שיוך".
+        </p>
       )}
       <div className="speaker-grid">
         {speakers.map((sp) => {
@@ -506,6 +546,12 @@ function SpeakerCard({ speakers, segments, confirmed, nameForSlot, numSlots, onS
                 <b><i className={`dot ${colorClass(sp.label_index)}`} /> דובר {sp.label_index}</b>
                 <span className="muted small">{s.count} משפטים</span>
               </div>
+              {sp.pitch_hz ? (
+                <div className="muted small">
+                  גובה קול: {Math.round(sp.pitch_hz)} Hz
+                  {femaleSlot > 0 && sp.speaker_id === highest && <span className="badge female">♀ הקול הגבוה ביותר</span>}
+                </div>
+              ) : null}
               {s.seg ? (
                 <button className="sample" onClick={() => onPlaySample(s.seg)} title="השמעת דוגמה">
                   <span className="play">▶</span>
@@ -534,6 +580,9 @@ function SpeakerCard({ speakers, segments, confirmed, nameForSlot, numSlots, onS
       </div>
       <div className="row gap">
         {speakers.length === 2 && <button className="btn ghost small" onClick={swap}>⇄ החלף בין הדוברים</button>}
+        <button className="btn ghost small" onClick={onAutoAssign} title="שיוך מחדש לפי סדר הדיבור והקול הגבוה ביותר לאישה">
+          ↻ שיוך אוטומטי
+        </button>
         {!confirmed && <button className="btn primary" onClick={() => onSave(mapping, true)}>אישור שיוך</button>}
         {confirmed && <button className="link-btn" onClick={() => onSave(mapping, false)}>הצג שוב כ"דובר 1, דובר 2…"</button>}
       </div>

@@ -19,6 +19,7 @@ from .config import (
     TRANSCRIPTION_SETTINGS,
     get_api_key,
 )
+from .pitch import assign_slots, speaker_pitches
 from .segmenter import build_segments
 
 log = logging.getLogger("transcriber")
@@ -93,20 +94,26 @@ def clamp_speakers(n) -> int:
     return max(MIN_SPEAKERS, min(MAX_SPEAKERS, n))
 
 
-def save_transcription(rec_id: int, response: dict, num_speakers: int = MIN_SPEAKERS) -> None:
+def save_transcription(rec_id: int, response: dict) -> None:
     """Persist the raw response and derived segments/speakers for a recording."""
+    rec = db.query_one("SELECT * FROM recordings WHERE id = ?", (rec_id,)) or {}
     response_file = f"{rec_id}.json"
     (RESPONSES_DIR / response_file).write_text(json.dumps(response, ensure_ascii=False, indent=2), encoding="utf-8")
 
     segments, speaker_order = build_segments(response)
     # Always offer as many speakers as expected, even if diarization found fewer.
-    num_speakers = clamp_speakers(num_speakers)
+    num_speakers = clamp_speakers(rec.get("num_speakers"))
     i = 0
     while len(speaker_order) < num_speakers:
         fallback = f"speaker_{i}"
         if fallback not in speaker_order:
             speaker_order.append(fallback)
         i += 1
+
+    # Names follow speaking order; a name marked as the woman goes to the highest voice.
+    pitches = speaker_pitches(RECORDINGS_DIR / rec["stored_name"], segments) if rec.get("stored_name") else {}
+    slots = assign_slots(speaker_order, num_speakers, rec.get("female_slot") or 0, pitches)
+    log.info("Recording %s voice pitches (Hz): %s -> names %s", rec_id, pitches, slots)
 
     duration = response.get("audio_duration_secs")
     if duration is None and segments:
@@ -116,11 +123,9 @@ def save_transcription(rec_id: int, response: dict, num_speakers: int = MIN_SPEA
         c.execute("DELETE FROM segments WHERE recording_id = ?", (rec_id,))
         c.execute("DELETE FROM speakers WHERE recording_id = ?", (rec_id,))
         for i, sp in enumerate(speaker_order, start=1):
-            # Voices in order of first appearance get names 1..N; any extra voices wrap around.
-            slot = ((i - 1) % num_speakers) + 1
             c.execute(
-                "INSERT INTO speakers (recording_id, speaker_id, label_index, slot) VALUES (?, ?, ?, ?)",
-                (rec_id, sp, i, slot),
+                "INSERT INTO speakers (recording_id, speaker_id, label_index, slot, pitch_hz) VALUES (?, ?, ?, ?, ?)",
+                (rec_id, sp, i, slots[sp], pitches.get(sp)),
             )
         for i, s in enumerate(segments):
             c.execute(
@@ -151,7 +156,7 @@ async def _process(rec_id: int) -> None:
         response = await _call_elevenlabs(RECORDINGS_DIR / rec["stored_name"], rec["filename"], num_speakers)
         if "words" not in response:
             raise TranscriptionError("התקבלה תשובה לא צפויה מ-ElevenLabs (חסר שדה words).")
-        await asyncio.to_thread(save_transcription, rec_id, response, num_speakers)
+        await asyncio.to_thread(save_transcription, rec_id, response)
         log.info("Recording %s done", rec_id)
     except ApiError as e:
         log.warning("ElevenLabs API error for %s: %s", rec_id, e)

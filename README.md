@@ -6,6 +6,7 @@ A local Windows application that transcribes Hebrew phone conversations between 
 - **Frontend:** React + Vite (`frontend/`, prebuilt into `frontend/dist`)
 - **Storage:** SQLite and local files (`data/`)
 - **Transcription:** official `elevenlabs` Python SDK
+- **Voice pitch (to recognise the woman's voice):** analysed locally with `av` (PyAV) and `numpy`; no audio is sent anywhere else
 
 Everything runs on your computer. The API key stays in `.env` and is used only by the local backend. It is never sent to the browser. The server listens on `127.0.0.1` only.
 
@@ -38,9 +39,9 @@ On the first run it installs Python if needed, creates a virtual environment (`.
 ## Workflow
 
 1. **Upload** one or more recordings (MP3, M4A, WAV). Drag them in or click the upload box.
-2. **Choose the number of speakers and enter their names.** Pick how many people are in the call (2, 3 or 4) under *מספר דוברים בשיחה*, then type a name for each. This number is sent to ElevenLabs, so set it before transcribing. Names and the count are saved per recording. If you upload several calls with the same people, click *"החל את מספר הדוברים והשמות על כל ההקלטות שטרם תומללו"* to copy them to the other recordings.
+2. **Choose the number of speakers and enter their names.** Pick how many people are in the call (2, 3 or 4) under *מספר דוברים בשיחה*, then type a name for each. This number is sent to ElevenLabs, so set it before transcribing. **Type the names in the order people start talking** (who speaks first, second, …): the app pre-assigns each detected voice to a name in that order. If one participant is a woman, tick **אישה** next to her name: the app measures how high each voice is and gives her name to the highest voice, and the others still follow speaking order. Names, the count and the woman mark are saved per recording, and each new upload starts with the settings of the previous recording. If you upload several calls with the same people, click *"החל את מספר הדוברים והשמות על כל ההקלטות שטרם תומללו"* to copy them to the other recordings.
 3. Click **תמלל** (Transcribe), or **"תמלל את כל הממתינות"** to transcribe every pending recording. Each recording is sent to ElevenLabs as one whole file, with no chunking. The interface stays usable while transcription runs in the background, and the status and elapsed time are shown.
-4. **Confirm the speakers.** The transcript first shows the detected voices as *דובר 1*, *דובר 2* and so on. Play the short sample for each voice and choose which name it belongs to. Choosing a name that another voice already has swaps the two. With two speakers you can also click *⇄ החלף*. Then click **אישור שיוך**. ElevenLabs can occasionally confuse two similar voices (for example two men on a phone line); fix any wrong sentence with the speaker chip next to it. The names then appear throughout the transcript.
+4. **Confirm the speakers.** The transcript first shows the detected voices as *דובר 1*, *דובר 2* and so on, already assigned to names automatically (speaking order, plus the highest voice for the woman). Each voice shows its measured pitch. Play the short sample for each voice and correct the name if needed. If you change the names, their order or the woman mark after transcribing, click *↻ שיוך אוטומטי* to redo the automatic assignment. Choosing a name that another voice already has swaps the two. With two speakers you can also click *⇄ החלף*. Then click **אישור שיוך**. ElevenLabs can occasionally confuse two similar voices (for example two men on a phone line); fix any wrong sentence with the speaker chip next to it. The names then appear throughout the transcript.
 5. **Correct** the transcript if needed:
    - Click a sentence or its timestamp to jump the player there. The sentence that is playing is highlighted.
    - Edit text directly in place.

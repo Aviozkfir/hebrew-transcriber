@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS recordings (
     name3           TEXT NOT NULL DEFAULT '',
     name4           TEXT NOT NULL DEFAULT '',
     num_speakers    INTEGER NOT NULL DEFAULT 2,       -- expected number of people in the call (2-4)
+    female_slot     INTEGER NOT NULL DEFAULT 0,       -- which name (1-4) is the woman; 0 = none marked
     status          TEXT NOT NULL DEFAULT 'uploaded',  -- uploaded|queued|transcribing|done|error
     error           TEXT,
     started_at      TEXT,
@@ -37,6 +38,7 @@ CREATE TABLE IF NOT EXISTS speakers (
     speaker_id      TEXT NOT NULL,      -- as returned by ElevenLabs, e.g. speaker_0
     label_index     INTEGER NOT NULL,   -- 1-based order of first appearance ("Speaker 1")
     slot            INTEGER NOT NULL,   -- 1 => name1, 2 => name2, 3 => name3, 4 => name4
+    pitch_hz        REAL,               -- median voice pitch, used to recognise the woman's voice
     PRIMARY KEY (recording_id, speaker_id)
 );
 
@@ -90,6 +92,10 @@ MIGRATIONS = {
         "name3": "TEXT NOT NULL DEFAULT ''",
         "name4": "TEXT NOT NULL DEFAULT ''",
         "num_speakers": "INTEGER NOT NULL DEFAULT 2",
+        "female_slot": "INTEGER NOT NULL DEFAULT 0",
+    },
+    "speakers": {
+        "pitch_hz": "REAL",
     },
 }
 

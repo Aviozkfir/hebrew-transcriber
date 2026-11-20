@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import db, exporters, transcriber
+from .pitch import assign_slots
 from .config import (
     ALLOWED_EXTENSIONS,
     FRONTEND_DIST,
@@ -88,6 +89,10 @@ def list_recordings():
     return [_public_rec(r) for r in db.query("SELECT * FROM recordings ORDER BY id DESC")]
 
 
+# Speaker settings copied from the latest recording to each new upload.
+CARRY_OVER = ("num_speakers", "name1", "name2", "name3", "name4", "female_slot")
+
+
 @app.post("/api/recordings")
 async def upload_recordings(files: list[UploadFile] = File(...)):
     created = []
@@ -102,10 +107,14 @@ async def upload_recordings(files: list[UploadFile] = File(...)):
                 out.write(chunk)
                 size += len(chunk)
         now = db.now_iso()
+        # Calls are usually with the same people: start from the latest recording's speakers.
+        last = db.query_one(f"SELECT {', '.join(CARRY_OVER)} FROM recordings ORDER BY id DESC LIMIT 1") or {}
+        carried = {k: last[k] for k in CARRY_OVER if k in last}
+        cols = ["filename", "stored_name", "size_bytes", "created_at", "updated_at", *carried]
         with db.tx() as c:
             cur = c.execute(
-                "INSERT INTO recordings (filename, stored_name, size_bytes, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (up.filename, stored, size, now, now),
+                f"INSERT INTO recordings ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                (up.filename, stored, size, now, now, *carried.values()),
             )
             created.append(cur.lastrowid)
     return [_public_rec(_get_rec(i)) for i in created]
@@ -123,6 +132,7 @@ class RecordingPatch(BaseModel):
     name3: str | None = None
     name4: str | None = None
     num_speakers: int | None = None
+    female_slot: int | None = None  # 0 = nobody marked as the woman
 
 
 @app.patch("/api/recordings/{rec_id}")
@@ -131,6 +141,8 @@ def patch_recording(rec_id: int, body: RecordingPatch):
     fields = {k: v.strip() if isinstance(v, str) else v for k, v in body.model_dump(exclude_none=True).items()}
     if "num_speakers" in fields and not MIN_SPEAKERS <= fields["num_speakers"] <= MAX_SPEAKERS:
         raise HTTPException(400, f"מספר הדוברים חייב להיות בין {MIN_SPEAKERS} ל-{MAX_SPEAKERS}")
+    if "female_slot" in fields and not 0 <= fields["female_slot"] <= MAX_SPEAKERS:
+        raise HTTPException(400, "סימון לא תקין")
     if fields:
         fields["updated_at"] = db.now_iso()
         sets = ", ".join(f"{k} = ?" for k in fields)
@@ -204,6 +216,22 @@ def set_speakers(rec_id: int, body: SpeakerMapping):
         if body.confirmed is not None:
             c.execute("UPDATE recordings SET speakers_confirmed = ?, updated_at = ? WHERE id = ?",
                       (1 if body.confirmed else 0, db.now_iso(), rec_id))
+    return {"speakers": _speakers(rec_id), "recording": _public_rec(_get_rec(rec_id))}
+
+
+@app.post("/api/recordings/{rec_id}/auto-assign")
+def auto_assign(rec_id: int):
+    """Re-apply the automatic voice -> name assignment (speaking order + woman's voice)."""
+    rec = _get_rec(rec_id)
+    speakers = _speakers(rec_id)
+    if not speakers:
+        raise HTTPException(409, f"ההקלטה {rec['filename']} עדיין לא תומללה")
+    order = [s["speaker_id"] for s in speakers]  # already in order of first appearance
+    pitches = {s["speaker_id"]: s["pitch_hz"] for s in speakers if s["pitch_hz"]}
+    slots = assign_slots(order, transcriber.clamp_speakers(rec["num_speakers"]), rec["female_slot"], pitches)
+    with db.tx() as c:
+        for sp, slot in slots.items():
+            c.execute("UPDATE speakers SET slot = ? WHERE recording_id = ? AND speaker_id = ?", (slot, rec_id, sp))
     return {"speakers": _speakers(rec_id), "recording": _public_rec(_get_rec(rec_id))}
 
 
