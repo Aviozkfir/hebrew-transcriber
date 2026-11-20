@@ -27,16 +27,32 @@ if not defined PY (
 )
 
 rem ---- 2. Virtual environment + dependencies (installed once / when changed)
-if not exist ".venv\Scripts\python.exe" (
-    echo  Creating Python environment...
-    %PY% -m venv .venv || goto :fail
+rem Some package files have very long names. Windows limits paths to 260 characters
+rem unless "long paths" are enabled, so enable them, or else keep the environment
+rem in a short folder (C:\htenv) instead of .venv inside this folder.
+call :check_long_paths
+if not defined LONGPATHS (
+    echo  Windows long file paths are not enabled. They are needed to install the dependencies.
+    echo  Windows will ask for permission to enable them. Click "Yes".
+    echo.
+    powershell -NoProfile -Command "try { Start-Process reg -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList 'add','HKLM\SYSTEM\CurrentControlSet\Control\FileSystem','/v','LongPathsEnabled','/t','REG_DWORD','/d','1','/f' } catch { exit 1 }"
+    call :check_long_paths
 )
-fc /b "backend\requirements.txt" ".venv\installed-requirements.txt" >nul 2>nul
+set "VENV=.venv"
+if not defined LONGPATHS (
+    set "VENV=%SystemDrive%\htenv"
+    echo  Long paths are still disabled, so the Python environment will be kept in %SystemDrive%\htenv instead.
+)
+if not exist "%VENV%\Scripts\python.exe" (
+    echo  Creating Python environment...
+    %PY% -m venv "%VENV%" || goto :fail
+)
+fc /b "backend\requirements.txt" "%VENV%\installed-requirements.txt" >nul 2>nul
 if errorlevel 1 (
     echo  Installing dependencies - first run only, this may take a minute...
-    ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q --upgrade pip
-    ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q -r backend\requirements.txt || goto :fail
-    copy /y "backend\requirements.txt" ".venv\installed-requirements.txt" >nul
+    "%VENV%\Scripts\python.exe" -m pip install --disable-pip-version-check -q --upgrade pip
+    "%VENV%\Scripts\python.exe" -m pip install --disable-pip-version-check -q -r backend\requirements.txt || goto :fail
+    copy /y "backend\requirements.txt" "%VENV%\installed-requirements.txt" >nul
 )
 
 rem ---- 3. API key ------------------------------------------------------------
@@ -64,7 +80,7 @@ if not exist "frontend\dist\index.html" (
 )
 
 rem ---- 5. Run ----------------------------------------------------------------
-".venv\Scripts\python.exe" backend\run.py
+"%VENV%\Scripts\python.exe" backend\run.py
 goto :eof
 
 :fail
@@ -74,6 +90,11 @@ pause
 exit /b 1
 
 rem ---- Helpers ---------------------------------------------------------------
+
+:check_long_paths
+set "LONGPATHS="
+reg query "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled 2>nul | find "0x1" >nul && set "LONGPATHS=1"
+exit /b 0
 
 :find_python
 rem Sets PY to a Python 3.10+ command, or leaves it empty if none is found.

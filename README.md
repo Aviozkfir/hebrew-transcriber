@@ -96,6 +96,7 @@ To back up everything, copy the `data` folder. Deleting a recording in the app a
 | "מפתח ה-API אינו תקין (401)" | The key is wrong or was revoked. |
 | "אין מספיק קרדיט (402)" | Top up your ElevenLabs account. |
 | "לא ניתן להתחבר ל-ElevenLabs" | Check your internet connection, firewall or proxy. |
+| "Could not install packages due to an OSError … Long Path" | Windows limits file paths to 260 characters. `start.bat` asks to enable long paths (click **Yes** on the Windows prompt). If you decline, it keeps the Python environment in `C:\htenv` instead. You can also move the app to a short folder such as `D:\ht`. Delete the `.venv` folder before running `start.bat` again. |
 | Port already in use | Set `PORT=8766` (or another free port) in `.env`. |
 
 If the app is closed during a transcription, that recording is queued again automatically the next time the app starts.
