@@ -10,18 +10,20 @@ echo    Hebrew Telephone Transcription
 echo  ==============================================
 echo.
 
-rem ---- 1. Find Python 3.10+ -------------------------------------------------
-set "PY="
-where py >nul 2>nul && py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)" >nul 2>nul && set "PY=py -3"
+rem ---- 1. Find Python 3.10+ (installed automatically if missing) ------------
+call :find_python
 if not defined PY (
-    where python >nul 2>nul && python -c "import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)" >nul 2>nul && set "PY=python"
+    echo  Python 3.10 or newer was not found. Installing Python 3.12 automatically...
+    echo  This happens only once and takes a few minutes. No administrator rights are needed.
+    echo.
+    call :install_python
+    call :find_python
 )
 if not defined PY (
-    echo  [ERROR] Python 3.10 or newer was not found.
+    echo  [ERROR] Python could not be installed automatically.
     echo          Install it from https://www.python.org/downloads/
     echo          and tick "Add python.exe to PATH" during installation.
-    pause
-    exit /b 1
+    goto :fail
 )
 
 rem ---- 2. Virtual environment + dependencies (installed once / when changed)
@@ -70,3 +72,44 @@ echo.
 echo  [ERROR] Startup failed. See the messages above.
 pause
 exit /b 1
+
+rem ---- Helpers ---------------------------------------------------------------
+
+:find_python
+rem Sets PY to a Python 3.10+ command, or leaves it empty if none is found.
+set "PY="
+set "PYCHECK=import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)"
+where py >nul 2>nul && py -3 -c "%PYCHECK%" >nul 2>nul && set "PY=py -3"
+if not defined PY (
+    where python >nul 2>nul && python -c "%PYCHECK%" >nul 2>nul && set "PY=python"
+)
+rem A Python installed moments ago is not on this window's PATH yet, so look in the usual folders.
+if not defined PY (
+    for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python3*" "%ProgramFiles%\Python3*") do (
+        if not defined PY if exist "%%~D\python.exe" "%%~D\python.exe" -c "%PYCHECK%" >nul 2>nul && set PY="%%~D\python.exe"
+    )
+)
+exit /b 0
+
+:install_python
+rem First try winget (built into Windows 10/11), installing for the current user only.
+where winget >nul 2>nul && (
+    echo  Installing Python with winget...
+    winget install -e --id Python.Python.3.12 --scope user --silent --accept-package-agreements --accept-source-agreements
+)
+call :find_python
+if defined PY exit /b 0
+
+rem Fallback: download the official installer from python.org and run it silently.
+set "PYINST=%TEMP%\python-3.12.10-amd64.exe"
+set "PYURL=https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe"
+echo  Downloading Python from python.org...
+curl.exe -L --fail -s -o "%PYINST%" "%PYURL%" || powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '%PYURL%' -OutFile '%PYINST%'"
+if not exist "%PYINST%" (
+    echo  [ERROR] Could not download Python. Check your internet connection.
+    exit /b 1
+)
+echo  Running the Python installer...
+"%PYINST%" /quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 InstallLauncherAllUsers=0 Include_test=0
+del "%PYINST%" >nul 2>nul
+exit /b 0

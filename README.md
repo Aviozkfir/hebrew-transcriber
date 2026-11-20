@@ -13,8 +13,10 @@ Everything runs on your computer. The API key stays in `.env` and is used only b
 
 ## Setup (once)
 
-1. Install **Python 3.10 or newer** from <https://www.python.org/downloads/>. During installation, tick **"Add python.exe to PATH"**.
-2. Copy this `hebrew-transcriber` folder anywhere on your computer.
+Requirements: **Windows 10 or 11** and an internet connection. Everything else is installed automatically by `start.bat`.
+
+1. Copy this `hebrew-transcriber` folder anywhere on your computer.
+2. Python 3.10 or newer is needed. If it is not installed, `start.bat` installs Python 3.12 for you on the first run, for your user only and without administrator rights. It uses `winget`, or downloads the official installer from python.org if `winget` is not available. To install it yourself instead, get it from <https://www.python.org/downloads/> and tick **"Add python.exe to PATH"**.
 3. Create your key file: copy `.env.example` to `.env` and paste your ElevenLabs API key:
    ```
    ELEVENLABS_API_KEY=sk_...
@@ -31,7 +33,7 @@ Double-click **`start.bat`**, or run it from a terminal:
 start.bat
 ```
 
-On the first run it creates a virtual environment (`.venv`) and installs the dependencies, which takes about a minute. It then starts the server and opens <http://127.0.0.1:8765> in your browser. To stop the app, close the console window.
+On the first run it installs Python if needed, creates a virtual environment (`.venv`) and installs the dependencies, which takes a few minutes. It then starts the server and opens <http://127.0.0.1:8765> in your browser. To stop the app, close the console window.
 
 ## Workflow
 
